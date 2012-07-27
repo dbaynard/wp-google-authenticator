@@ -4,9 +4,9 @@ Plugin Name: Google Authenticator
 Plugin URI: http://henrik.schack.dk/google-authenticator-for-wordpress
 Description: Two-Factor Authentication for WordPress using the Android/iPhone/Blackberry app as One Time Password generator.
 Author: Henrik Schack
-Version: 0.35
+Version: 0.42
 Author URI: http://henrik.schack.dk/
-Compatibility: WordPress 3.2
+Compatibility: WordPress 3.4.1
 Text Domain: google-authenticator
 Domain Path: /lang
 
@@ -14,10 +14,14 @@ Domain Path: /lang
 
 	Thanks to Bryan Ruiz for his Base32 encode/decode class, found at php.net.
 	Thanks to Tobias Bäthge for his major code rewrite and German translation.
-	
+	Thanks to Pascal de Bruijn for his relaxed mode idea.
+	Thanks to Daniel Werl for his usability tips.
+	Thanks to Dion Hulse for his bugfixes.
+	Thanks to Aldo Latino for his Italian translation.
+
 ----------------------------------------------------------------------------
 
-    Copyright 2011  Henrik Schack  (email : henrik@schack.dk)
+    Copyright 2012  Henrik Schack  (email : henrik@schack.dk)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -53,6 +57,7 @@ function init() {
     require_once( 'base32.php' );
     
     add_action( 'login_form', array( $this, 'loginform' ) );
+    add_action( 'login_footer', array( $this, 'loginfooter' ) );
     add_filter( 'authenticate', array( $this, 'check_otp' ), 50, 3 );
 
     if ( defined( 'DOING_AJAX' ) && DOING_AJAX )
@@ -69,13 +74,23 @@ function init() {
 /**
  * Check the verification code entered by the user.
  */
-function verify( $secretkey, $thistry ) {
+function verify( $secretkey, $thistry, $relaxedmode ) {
+
+	// If user is running in relaxed mode, we allow more time drifting
+	// ±4 min, as opposed to ± 30 seconds in normal mode.
+	if ( $relaxedmode == 'enabled' ) {
+		$firstcount = -8;
+		$lastcount  =  8; 
+	} else {
+		$firstcount = -1;
+		$lastcount  =  1; 	
+	}
 	
 	$tm = floor( time() / 30 );
 	
 	$secretkey=Base32::decode($secretkey);
 	// Keys from 30 seconds before and after are valid aswell.
-	for ($i=-1; $i<2; $i++) {
+	for ($i=$firstcount; $i<=$lastcount; $i++) {
 		// Pack time into binary string
 		$time=chr(0).chr(0).chr(0).chr(0).pack('N*',$tm+$i);
 		// Hash it with users secret key
@@ -117,11 +132,21 @@ function create_secret() {
  */
 function loginform() {
     echo "\t<p>\n";
-    echo "\t\t<label><a href=\"http://code.google.com/p/google-authenticator/\" target=\"_blank\" title=\"".__('If you don\'t have Google Authenticator enabled for your WordPress account, leave this field empty.','google-authenticator')."\">".__('Google Authenticator code','google-authenticator')."</a><span id=\"google-auth-info\"></span><br />\n";
-    echo "\t\t<input type=\"password\" name=\"otp\" id=\"user_email\" class=\"input\" value=\"\" size=\"20\" tabindex=\"25\" /></label>\n";
+    echo "\t\t<label title=\"".__('If you don\'t have Google Authenticator enabled for your WordPress account, leave this field empty.','google-authenticator')."\">".__('Google Authenticator code','google-authenticator')."<span id=\"google-auth-info\"></span><br />\n";
+    echo "\t\t<input type=\"text\" name=\"otp\" id=\"user_email\" class=\"input\" value=\"\" size=\"20\" tabindex=\"25\" /></label>\n";
     echo "\t</p>\n";
 }
 
+/**
+ * Disable autocomplete on Google Authenticator code input field.
+ */
+function loginfooter() {
+    echo "\n<script type=\"text/javascript\">\n";
+    echo "\ttry{\n";
+    echo "\t\tdocument.getElementById('user_email').setAttribute('autocomplete','off');\n";
+    echo "\t} catch(e){}\n";
+    echo "</script>\n";
+}
 
 /**
  * Login form handling.
@@ -143,27 +168,26 @@ function check_otp( $user, $username = '', $password = '' ) {
 		// Get the users secret
 		$GA_secret = trim( get_user_option( 'googleauthenticator_secret', $user->ID ) );
 		
+		// Figure out if user is using relaxed mode ?
+		$GA_relaxedmode = trim( get_user_option( 'googleauthenticator_relaxedmode', $user->ID ) );
+		
 		// Get the verification code entered by the user trying to login
 		$otp = intval( trim( $_POST[ 'otp' ] ) );
 	
 		// Valid code ?
-		if ( $this->verify( $GA_secret, $otp ) ) {
+		if ( $this->verify( $GA_secret, $otp, $GA_relaxedmode ) ) {
 			return $userstate;
 		} else {
-			// No, lets see if an app password is enabled
-			if ( trim( get_user_option( 'googleauthenticator_pwdenabled', $user->ID ) ) == 'enabled' ) {
+			// No, lets see if an app password is enabled, and this is an XMLRPC / APP login ?
+			if ( trim( get_user_option( 'googleauthenticator_pwdenabled', $user->ID ) ) == 'enabled' && ( defined('XMLRPC_REQUEST') || defined('APP_REQUEST') ) ) {
 				$GA_passwords 	= json_decode(  get_user_option( 'googleauthenticator_passwords', $user->ID ) );
 				$passwordsha1	= trim($GA_passwords->{'password'} );
 				$usersha1		= sha1( strtoupper( str_replace( ' ', '', $password ) ) );
 				if ( $passwordsha1 == $usersha1 ) {
 					return new WP_User( $user->ID );
 				} else {
-					if ( $otp == '' ) {
-						// No Google Authenticator code entered, must be a wrong app login attempt
-						return new WP_Error( 'invalid_google_authenticator_password', __( '<strong>ERROR</strong>: The Google Authenticator password is incorrect.', 'google-authenticator' ) );
-					} else {
-						return new WP_Error( 'invalid_google_authenticator_token', __( '<strong>ERROR</strong>: The Google Authenticator code is incorrect or has expired.', 'google-authenticator' ) );
-					}			
+					// Wrong XMLRPC/APP password !
+					return new WP_Error( 'invalid_google_authenticator_password', __( '<strong>ERROR</strong>: The Google Authenticator password is incorrect.', 'google-authenticator' ) );
 				} 		 
 			} else {
 				return new WP_Error( 'invalid_google_authenticator_token', __( '<strong>ERROR</strong>: The Google Authenticator code is incorrect or has expired.', 'google-authenticator' ) );
@@ -184,8 +208,9 @@ function profile_personal_options() {
 	
 	$GA_secret			= trim( get_user_option( 'googleauthenticator_secret', $user_id ) );
 	$GA_enabled			= trim( get_user_option( 'googleauthenticator_enabled', $user_id ) );
+	$GA_relaxedmode		= trim( get_user_option( 'googleauthenticator_relaxedmode', $user_id ) );
 	$GA_description		= trim( get_user_option( 'googleauthenticator_description', $user_id ) );
-	$GA_pwdenabled		= trim( get_user_option( 'googleauthenticator_pwdenabled', $userid ) );
+	$GA_pwdenabled		= trim( get_user_option( 'googleauthenticator_pwdenabled', $user_id ) );
 	$GA_password		= trim( get_user_option( 'googleauthenticator_passwords', $user_id ) );
 	
 	// We dont store the generated app password in cleartext so there is no point in trying
@@ -220,6 +245,13 @@ function profile_personal_options() {
 	$qrcodeurl = "https://chart.googleapis.com/chart?cht=qr&amp;chs=300x300&amp;chld=H|0&amp;chl={$chl}";
 
 	if ( $is_profile_page || IS_PROFILE_PAGE ) {
+		echo "<tr>\n";
+		echo "<th scope=\"row\">".__( 'Relaxed mode', 'google-authenticator' )."</th>\n";
+		echo "<td>\n";
+		echo "<input name=\"GA_relaxedmode\" id=\"GA_relaxedmode\" class=\"tog\" type=\"checkbox\"" . checked( $GA_relaxedmode, 'enabled', false ) . "/><span class=\"description\">".__(' Relaxed mode allows for more time drifting on your phone clock (&#177;4 min).','google-authenticator')."</span>\n";
+		echo "</td>\n";
+		echo "</tr>\n";
+		
 		echo "<tr>\n";
 		echo "<th><label for=\"GA_description\">".__('Description','google-authenticator')."</label></th>\n";
 		echo "<td><input name=\"GA_description\" id=\"GA_description\" value=\"{$GA_description}\"  type=\"text\" size=\"25\" /><span class=\"description\">".__(' Description that you\'ll see in the Google Authenticator app on your phone.','google-authenticator')."</span><br /></td>\n";
@@ -325,20 +357,29 @@ ENDOFJS;
 function personal_options_update() {
 	global $user_id;
 
-	$GA_enabled		= trim( $_POST['GA_enabled'] );
-	$GA_secret		= trim( $_POST['GA_secret'] );
-	$GA_pwdenabled	= trim( $_POST['GA_pwdenabled'] );
+	$GA_enabled	= ! empty( $_POST['GA_enabled'] );
+	$GA_description	= trim( $_POST['GA_description'] );
+	$GA_relaxedmode	= ! empty( $_POST['GA_relaxedmode'] );
+	$GA_secret	= trim( $_POST['GA_secret'] );
+	$GA_pwdenabled	= ! empty( $_POST['GA_pwdenabled'] );
 	$GA_password	= str_replace(' ', '', trim( $_POST['GA_password'] ) );
 	
-	if ( '' == $GA_enabled ) {
+	if ( ! $GA_enabled ) {
 		$GA_enabled = 'disabled';
-    } else {
+	} else {
 		$GA_enabled = 'enabled';
 	}
 
-	if ( '' == $GA_pwdenabled ) {
+	if ( ! $GA_relaxedmode ) {
+		$GA_relaxedmode = 'disabled';
+	} else {
+		$GA_relaxedmode = 'enabled';
+	}
+
+
+	if ( ! $GA_pwdenabled ) {
 		$GA_pwdenabled = 'disabled';
-    } else {
+	} else {
 		$GA_pwdenabled = 'enabled';
 	}
 	
@@ -350,6 +391,8 @@ function personal_options_update() {
 	}
 	
 	update_user_option( $user_id, 'googleauthenticator_enabled', $GA_enabled, true );
+	update_user_option( $user_id, 'googleauthenticator_description', $GA_description, true );
+	update_user_option( $user_id, 'googleauthenticator_relaxedmode', $GA_relaxedmode, true );
 	update_user_option( $user_id, 'googleauthenticator_secret', $GA_secret, true );
 	update_user_option( $user_id, 'googleauthenticator_pwdenabled', $GA_pwdenabled, true );
 
@@ -381,11 +424,11 @@ function edit_user_profile() {
 function edit_user_profile_update() {
 	global $user_id;
 	
-	$GA_enabled	= trim( $_POST['GA_enabled'] );
+	$GA_enabled	= ! empty( $_POST['GA_enabled'] );
 
-	if ( '' == $GA_enabled ) {
+	if ( ! $GA_enabled ) {
 		$GA_enabled = 'disabled';
-    } else {
+	} else {
 		$GA_enabled = 'enabled';
 	}
 	
