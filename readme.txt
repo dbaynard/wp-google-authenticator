@@ -1,10 +1,10 @@
 === Google Authenticator ===
 Contributors: Henrik.Schack
-Donate Link: https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=CA36JVKMLE9EA&lc=DK&item_number=Google%20Authenticator&currency_code=USD&bn=PP%2dDonationsBF%3abtn_donate_LG%2egif%3aNonHosted
+Donate Link: https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=henrik%40schack%2edk&lc=US&item_name=Google%20Authenticator&item_number=Google%20Authenticator&no_shipping=0&no_note=1&tax=0&bn=PP%2dDonationsBF&charset=UTF%2d8
 Tags: authentication,otp,password,security,login,android,iphone,blackberry
 Requires at least: 3.1.2
-Tested up to: 3.2
-Stable tag: 0.35
+Tested up to: 3.4.1
+Stable tag: 0.43
 
 Google Authenticator for your WordPress blog.
 
@@ -17,7 +17,6 @@ If you are security aware, you may already have the Google Authenticator app ins
 The two-factor authentication requirement can be enabled on a per-user basis. You could enable it for your administrator account, but log in as usual with less privileged accounts.
 
 If You need to maintain your blog using an Android/iPhone app, or any other software using the XMLRPC interface, you can enable the App password feature in this plugin, 
-
 but please note that enabling the App password feature will make your blog less secure.
 
 == Installation ==
@@ -30,6 +29,10 @@ but please note that enabling the App password feature will make your blog less 
 
 == Frequently Asked Questions ==
 
+= The iPhone app keeps telling me I'm trying to scan an authentication token barcode that isn't valid, what to do ? =
+
+Apparently the iPhone app won't accept a barcode containing space characters in the description, removing space characters in the description should fix the problem.
+
 = Can I use Google Authenticator for WordPress with the Android/iPhone apps for WordPress? =
 
 Yes, you can enable the App password feature to make that possible, but notice that the XMLRPC interface isn't protected by two-factor authentication, only a long password.
@@ -38,9 +41,17 @@ Yes, you can enable the App password feature to make that possible, but notice t
 
 No, you'll have to delete the existing account from the Google Authenticator app on your smartphone before you scan the new QR code, that is unless you change the description as well.
 
-= Sometimes I am unable to log in using this plugin, the first code never works, what's wrong ? =
+= I am unable to log in using this plugin, what's wrong ? =
 
-The Google Authenticator verification codes are time based, so it's crucial that the clock in your phone is accurate and in sync with the time on the server where your WordPress installation is hosted.
+The Google Authenticator verification codes are time based, so it's crucial that the clock in your phone is accurate and in sync with the clock on the server where your WordPress installation is hosted. 
+
+If you have an Android phone, you can use an app like [ClockSync](https://market.android.com/details?id=ru.org.amip.ClockSync) to set your clock in case your Cell provider doesn't provide accurate time information
+
+Another option is to enable "relaxed mode" in the settings for the plugin, this will enable more valid codes by allowing up to a 4 min. timedrift in each direction.
+
+= I have several users on my WordPress installation, is that a supported configuration ? =
+
+Yes, each user has his own Google Authenticator settings.
 
 == Screenshots ==
 
@@ -50,6 +61,30 @@ The Google Authenticator verification codes are time based, so it's crucial that
 4. Google Authenticator app on Android
 
 == Changelog ==
+
+= 0.43 =
+* It's now possible for an admin to hide the Google Authenticaator settings on a per-user basis. (Feature request by : Skate-O)
+
+= 0.42 =
+* Autocomplete disabled on code input field. (Feature request by : hiphopsmurf)
+
+= 0.41 =
+* Italian translation by Aldo Latino added.
+
+= 0.40 =
+* Bugfix, typo corrected and PHP notices removed. Thanks to Dion Hulse for his patch.
+
+= 0.39 =
+* Bugfix, Description was not saved to WordPress database when updating profile. Thanks to xxdesmus for noticing this.
+
+= 0.38 =
+* Usability fix, input field for codes changed from password to text type.
+
+= 0.37 =
+* The plugin now supports "relaxed mode" when authenticating. If selected, codes from 4 minutes before and 4 minutes after will work. 30 seconds before and after is still the default setting.
+
+= 0.36 =
+* Bugfix, now an App password can only be used for XMLRPC/APP-Request logins.
 
 = 0.35 =
 * Initial WordPress app support added (XMLRPC).
@@ -67,3 +102,11 @@ The Google Authenticator verification codes are time based, so it's crucial that
 Thanks to:
 
 [Tobias Bäthge](http://tobias.baethge.com/) for his code rewrite and German translation.
+
+[Pascal de Bruijn](http://blog.pcode.nl/) for his "relaxed mode" idea.
+
+[Daniel Werl](http://technobabbl.es/) for his usability tips.
+
+[Dion Hulse](http://dd32.id.au/) for his bugfixes.
+
+[Aldo Latino](http://profiles.wordpress.org/users/aldolat/) for his Italian translation.
